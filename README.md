@@ -51,7 +51,7 @@ Separated in two directories:
 ### Prerequisites
 
 - Python 3.9 or higher
-- AWS CLI configured with appropriate credentials
+- AWS CLI configured with appropriate credentials (optional, in case AWS lambda is used)
 - Docker (optional, for containerized deployment)
 
 ## Local Deployment
@@ -137,8 +137,21 @@ This section is going to be focus on deploying the **gdelt_news_collector/real_t
 1. Create a docker image of the package. Make sure to have the URL of the docker repository (you can upload to AWS ECR)
 2. Create a compute environment: On AWS Batch, create the compute enviroment where the `real_time_collector` script would be running.
 3. Create a job queue: This is where jobs will be submitted to be done.
-4. Create a job definition: The job definition defines the Docker image that will be launched an executed each time you submit a job.
+4. Create a job definition: The job definition defines the Docker image that will be launched and executed each time you submit a job:
+    - Once you have done the previous steps, and before scheduling a periodic task automatically, submit a job to the created job queue to see if it is executes properly.
+6. Use Amazon EventBridge to schedule each 15 minutes (update time for GDELT news) an execution of the defined job:
+    - This is done in the `Rule` section of Amazon EventBridge.
 
 #### Clean and Process Data Deployment
 
-Follow the same steps 
+Follow the same steps of the previous section, this time using the **data_cleaner** package.
+
+### Project Purpose
+
+There are two main useful tasks for which this project can be used:
+- Collection of historical news: GDELT 2.0 Event Database provides rich historical data of news from 2015 to the current moment. This project allows you to get historical and clean data from any defined date range from 2015 up to today.
+- Collection of real time news: GDELT also provides updated news in real time, published each 15 minutes. The project takes advantage of that and a cloud environment (AWS) to collect and clean real time articles.
+
+### More Information
+
+More information can be found in the README files inside each package.
