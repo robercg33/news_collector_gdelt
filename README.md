@@ -157,3 +157,7 @@ The collected news, being already cleaned, provides a rich source of data for ML
 ### More Information
 
 More information can be found in the README files inside each package.
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
