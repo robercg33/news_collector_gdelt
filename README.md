@@ -146,7 +146,7 @@ This section is going to be focus on deploying the **gdelt_news_collector/real_t
 
 Follow the same steps of the previous section, this time using the **data_cleaner** package.
 
-### Project Purpose
+## Project Purpose
 
 There are two main useful tasks for which this project can be used:
 - Collection of historical news: GDELT 2.0 Event Database provides rich historical data of news from 2015 to the current moment. This project allows you to get historical and clean data from any defined date range from 2015 up to today.
