@@ -1,0 +1,9 @@
+{
+  "urls": [
+    "https://www.rcreader.com/news-releases/work-monmouth-alumnae-students-part-international-women-engineering-day-june-23",
+    "https://www.kingstonthisweek.com:443/news/food-bank-to-move-into-new-bigger-facility-next-year/wcm/30eaf68b-7b94-4dc6-a452-d2a8d1bdfd20",
+    "https://www.dailyherald.com/20240624/chicago/ed-burke-sentenced-to-2-years-in-prison-on-corruption-charges/"
+  ],
+  "max_workers": 5,
+  "timeout": 5
+}
