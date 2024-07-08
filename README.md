@@ -152,6 +152,8 @@ There are two main useful tasks for which this project can be used:
 - Collection of historical news: GDELT 2.0 Event Database provides rich historical data of news from 2015 to the current moment. This project allows you to get historical and clean data from any defined date range from 2015 up to today.
 - Collection of real time news: GDELT also provides updated news in real time, published each 15 minutes. The project takes advantage of that and a cloud environment (AWS) to collect and clean real time articles.
 
+The collected news, being already cleaned, provides a rich source of data for ML and DL projects, specially for NLP tasks.
+
 ### More Information
 
 More information can be found in the README files inside each package.
