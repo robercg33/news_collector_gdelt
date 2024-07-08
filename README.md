@@ -27,10 +27,18 @@ More information about in their [GDELT 2.0 Event Database](https://blog.gdeltpro
 - **loader.py**: Script for loading the collected CSV files from the S3 bucket.
 
 ### gdelt_news_collector/
+Separated in two directories:
+- #### historical_news_collector/
 
-- **Dockerfile**: Dockerfile for setting up the GDELT news collector environment.
-- **news_collector.py**: Main script for collecting news URLs from GDELT, scraping content, and saving it to an S3 bucket.
-- **requirements.txt**: List of Python dependencies required for the GDELT news collector.
+    - **Dockerfile**: Dockerfile for setting up the GDELT news collector environment.
+    - **news_collector.py**: Main script for collecting news URLs from GDELT, scraping content, and saving it to an S3 bucket. It collects past news, for a given date range.
+    - **requirements.txt**: List of Python dependencies required for the GDELT news collector.
+
+- #### real_time_collector/
+
+    - **Dockerfile**: Dockerfile for setting up the GDELT news real-time collector environment.
+    - **last_csv_collector.py**: Main script for collecting the last CSV published from GDELT, scraping content, and saving it to an S3 bucket. It is intended to be deployed on a AWS batch process (or equivalents) with an execution frequency of 15 minutes
+    - **requirements.txt**: List of Python dependencies required for the GDELT news real-time collector.
 
 ### lambda_web_scraper/
 
@@ -43,10 +51,11 @@ More information about in their [GDELT 2.0 Event Database](https://blog.gdeltpro
 ### Prerequisites
 
 - Python 3.9 or higher
-- AWS CLI configured with appropriate credentials
+- AWS CLI configured with appropriate credentials (optional, in case AWS lambda is used)
 - Docker (optional, for containerized deployment)
 
-### Setup
+## Local Deployment
+### Setup (Local)
 
 1. Clone the repository:
     ```sh
@@ -71,20 +80,11 @@ More information about in their [GDELT 2.0 Event Database](https://blog.gdeltpro
     pip install -r gdelt_news_collector/requirements.txt
     ```
 
-### Usage
+### Usage (Local)
 
 #### Lambda Function Deployment
 
-1. Navigate to the `lambda_web_scraper` directory:
-    ```sh
-    cd lambda_web_scraper
-    ```
-
-2. Deploy the Lambda function using AWS CLI:
-    ```sh
-    aws lambda update-function-code --function-name <your_lambda_function_name> --zip-file fileb://lambda_scraper.zip
-    ```
-You can also implement the **lambda_web_scraper/lambda_scraper.py** script in the **gdelt_news_collector/news_collector.py** script instead of deploying it to AWS lambda
+For local usage, implement the  **lambda_web_scraper/lambda_scraper.py** script in the **gdelt_news_collector/news_collector.py** script instead of deploying it to AWS lambda. You can also use a mixed approach an deploy the lambda_scrapper into AWS lambda and call it from the local scripts (since AWS lambda should not incur in much or any costs for the current purpose).
 
 #### Collect News from GDELT
 
@@ -109,3 +109,49 @@ You can also implement the **lambda_web_scraper/lambda_scraper.py** script in th
     ```sh
     python executor.py <number_of_files_to_process> <execution_mode>
     ```
+
+## AWS Deployment
+
+#### Lambda Function Deployment
+
+1. Create a lambda function in `AWS Lambda`:
+    - Select the python environment (Recommended python3.9)
+    - Once created, configure the rest of parameters as needed. Recommended configuration is:
+        - 2048MB Memory.
+        - At least 5 min timeout. Some CSVs may take a bit to scrape due to having a huge number of URLs.
+2. Add python layer.
+    - Upload the .zip file containing the python layer (located on **lambda_web_scraper/python-layer.zip**) to any S3 bucket.
+    - Go to `Layers` -> `Add layer` and select 'Specify ARN'. Copy the ARN of the zip file you upload in the previous step. Click `Add`.
+3. Configure lambda handler function:
+    - Go to `Runtime settings`.
+    - In the `Handler` textbox, input <script_name><handler_name>. For our case it would be 'lambda_scraper.lambda_handler'. Save the configuration.
+4. Test the function:
+    - Go to the `Test` tag, and select 'create new event'.
+    - Select JSON format and copy the text inside **lambda_web_scraper/test_lambda.txt**. You can add any url you wish to see if it scrapes it properly.
+    - Click on `Test` to run it an ensure everything works fine.
+
+#### Collect News from GDELT Deployment
+
+This section is going to be focus on deploying the **gdelt_news_collector/real_time_collector**, as it is where we can take more advantage of the script being in the cloud, scheduled to collect the latest CSV published from GDELT each 15 minutes.
+
+1. Create a docker image of the package. Make sure to have the URL of the docker repository (you can upload to AWS ECR)
+2. Create a compute environment: On AWS Batch, create the compute enviroment where the `real_time_collector` script would be running.
+3. Create a job queue: This is where jobs will be submitted to be done.
+4. Create a job definition: The job definition defines the Docker image that will be launched and executed each time you submit a job:
+    - Once you have done the previous steps, and before scheduling a periodic task automatically, submit a job to the created job queue to see if it is executes properly.
+6. Use Amazon EventBridge to schedule each 15 minutes (update time for GDELT news) an execution of the defined job:
+    - This is done in the `Rule` section of Amazon EventBridge.
+
+#### Clean and Process Data Deployment
+
+Follow the same steps of the previous section, this time using the **data_cleaner** package.
+
+## Project Purpose
+
+There are two main useful tasks for which this project can be used:
+- Collection of historical news: GDELT 2.0 Event Database provides rich historical data of news from 2015 to the current moment. This project allows you to get historical and clean data from any defined date range from 2015 up to today.
+- Collection of real time news: GDELT also provides updated news in real time, published each 15 minutes. The project takes advantage of that and a cloud environment (AWS) to collect and clean real time articles.
+
+### More Information
+
+More information can be found in the README files inside each package.
