@@ -218,7 +218,7 @@ def retry_skipped_dates():
 if __name__ == "__main__":
 
     if len(sys.argv) != 5:
-        print("Usage: python script.py <start_date> <end_date> <concurrent_threads> <retry_skipped_dates>")
+        print("Usage: python news_collector.py <start_date> <end_date> <concurrent_threads> <retry_skipped_dates>")
         exit(1)
 
     #Get start and end dates
