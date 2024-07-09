@@ -16,4 +16,4 @@ It will start processing CSVs in blocks of the specified <number_of_files_to_pro
 
 ### batch <execution_mode>
 
-It will only take a single batch of CSVs and then die. This <execution_mode> is though to be deployed in a cloud environment, in a event-programmed way each 15 minutes, so it works in synchronized way with the **gdelt_news_collector/real_time_collector**. In that way, you can ensure to have clean and ready-to-use data with a real-time granularity.
+It will only take a single batch of CSVs, process them (clean), and then die. This <execution_mode> is though to be deployed in a cloud environment, in a event-programmed way each 15 minutes, so it works in synchronized way with the **gdelt_news_collector/real_time_collector**. In that way, you can ensure to have clean and ready-to-use data with a real-time granularity.
