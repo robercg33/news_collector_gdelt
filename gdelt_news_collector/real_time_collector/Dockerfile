@@ -13,5 +13,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the rest of the application code into the container
 COPY . .
 
+#Copy env file into the container
+COPY .env .
+
 # Command to run the main script
 CMD ["python", "last_csv_collector.py"]

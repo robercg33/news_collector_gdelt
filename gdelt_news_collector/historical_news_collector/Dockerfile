@@ -10,4 +10,7 @@ COPY . /app
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
+#Copy env file into the container
+COPY .env .
+
 # The command to run the script will be provided by AWS Batch, so no CMD or ENTRYPOINT needed here.

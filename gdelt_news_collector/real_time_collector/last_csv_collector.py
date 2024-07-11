@@ -13,14 +13,10 @@ load_dotenv()
 #Configure AWS clients with environment variables
 s3_client = boto3.client(
     's3',
-    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
     region_name=os.getenv('AWS_REGION')
 )
 lambda_client = boto3.client(
     'lambda',
-    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
     region_name=os.getenv('AWS_REGION')
 )
 
@@ -42,8 +38,6 @@ def main():
     Main function to fetch the latest GDELT CSV, process it, and upload the results to an S3 bucket.
     
     Environment Variables:
-    - AWS_ACCESS_KEY_ID: AWS access key ID
-    - AWS_SECRET_ACCESS_KEY: AWS secret access key
     - AWS_REGION: AWS region
     - S3_COLLECTOR_BUCKET_NAME: Name of the S3 bucket
     - LAMBDA_SCRAPER_FUNCTION_NAME: Name of the AWS Lambda function for scraping URLs
@@ -51,6 +45,9 @@ def main():
     Returns:
     None
     """
+
+    # Get the list of bucket names from environment variable
+    bucket_names = os.getenv('S3_COLLECTOR_BUCKET_NAMES').split(',')
 
     # Make the request to download the file
     response = requests.get(url)
@@ -112,7 +109,10 @@ def main():
 
             logger.info("Uploading to S3...")
 
-            s3_client.upload_file(result_filename, os.getenv('S3_COLLECTOR_BUCKET_NAME'), result_filename)
+            # Upload to all specified S3 buckets
+            for bucket_name in bucket_names:
+                s3_client.upload_file(result_filename, bucket_name, result_filename)
+                logger.info(f"Uploaded to S3 bucket: {bucket_name}")
 
             logger.info("Uploaded to S3")
 

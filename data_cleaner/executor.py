@@ -149,6 +149,7 @@ def main(n_files, execution_mode):
             remaining_count = get_remaining_files_count(loader.bucket_name, loader.s3_client)
             
             while remaining_count > 0:
+
                 process_files(n_files)
 
                 # Show remaining elements in the bucket
