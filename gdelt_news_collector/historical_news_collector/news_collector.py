@@ -234,7 +234,7 @@ if __name__ == "__main__":
 
     #Get the parameter to retry to get the skipped dates or not
     retry_skipped_dates_arg = sys.argv[4]
-    if retry_skipped_dates.lower() not in ["yes", "no"]:
+    if retry_skipped_dates_arg.lower() not in ["yes", "no"]:
         print("Error: <retry_skipped_dates> must be either 'yes' or 'no'")
         exit(1)
 
