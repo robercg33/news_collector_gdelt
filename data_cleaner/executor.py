@@ -107,11 +107,11 @@ def process_files(n_files, max_date_to_process):
 
         #Check what is the max date to process
         if max_date_to_process.lower() != "max":
-            ##IF start date starts
-            combined_df['date'].min() >= max_date_to_process
-            #Print execution terminated and finish the execution
-            print(f"Bucket cleaned up to date {max_date_to_process.strftime("%Y-%m-%d %H:%M:%S")}")
-            return True
+            ##IF we have processed records older than the max_date_to_process
+            if combined_df['date'].max() >= max_date_to_process:
+                #Print execution terminated and finish the execution
+                print(f"Bucket cleaned up to date {max_date_to_process.strftime("%Y-%m-%d %H:%M:%S")}")
+                return True
 
         #Create filename for parquet file
         start_date = combined_df['date'].min().strftime('%Y%m%d%H%M%S')
@@ -130,6 +130,7 @@ def process_files(n_files, max_date_to_process):
 
         #Delete processed CSVs from source bucket
         loader.delete_csvs(file_keys)
+        return False
 
     except Exception as e:
         print(f"An error occurred during processing: {e}")
