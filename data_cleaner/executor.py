@@ -106,7 +106,7 @@ def process_files(n_files, max_date_to_process):
             return
 
         #Check what is the max date to process
-        if max_date_to_process.lower() != "max":
+        if isinstance(max_date_to_process, str) and max_date_to_process.lower() != "max":
             ##IF we have processed records older than the max_date_to_process
             if combined_df['date'].max() > max_date_to_process:
                 #Print execution terminated and finish the execution
