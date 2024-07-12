@@ -110,7 +110,7 @@ def process_files(n_files, max_date_to_process):
             ##IF we have processed records older than the max_date_to_process
             if combined_df['date'].max() > max_date_to_process:
                 #Print execution terminated and finish the execution
-                print(f"Bucket cleaned up to date {max_date_to_process.strftime("%Y-%m-%d %H:%M:%S")}")
+                print(f"Bucket cleaned up to date {max_date_to_process.strftime('%Y-%m-%d %H:%M:%S')}")
                 return True
 
         #Create filename for parquet file
