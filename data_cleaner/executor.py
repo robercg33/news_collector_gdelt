@@ -130,6 +130,9 @@ def process_files(n_files, max_date_to_process):
 
         #Delete processed CSVs from source bucket
         loader.delete_csvs(file_keys)
+
+        #Inform user
+        print(f"File {parquet_file_name} saved into {os.getenv('S3_DESTINATION_BUCKET_NAME')} bucket.")
         return False
 
     except Exception as e:
