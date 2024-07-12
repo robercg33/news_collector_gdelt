@@ -76,7 +76,7 @@ def get_remaining_files_count(bucket_name, s3_client):
     return len([item for item in remaining_files if item['Key'].endswith('.csv')])
 
 
-def process_files(n_files):
+def process_files(n_files, max_date_to_process):
     """
     Process the specified number of files from the S3 bucket.
 
@@ -105,6 +105,14 @@ def process_files(n_files):
             print("Combined dataframe is empty after cleaning. Exiting.")
             return
 
+        #Check what is the max date to process
+        if max_date_to_process.lower() != "max":
+            ##IF start date starts
+            combined_df['date'].min() >= max_date_to_process
+            #Print execution terminated and finish the execution
+            print(f"Bucket cleaned up to date {max_date_to_process.strftime("%Y-%m-%d %H:%M:%S")}")
+            return True
+
         #Create filename for parquet file
         start_date = combined_df['date'].min().strftime('%Y%m%d%H%M%S')
         end_date = combined_df['date'].max().strftime('%Y%m%d%H%M%S')
@@ -127,7 +135,7 @@ def process_files(n_files):
         print(f"An error occurred during processing: {e}")
 
 
-def main(n_files, execution_mode):
+def main(n_files, execution_mode, max_date_to_process):
     """
     Main function to load, clean, and save CSV files from S3.
 
@@ -150,7 +158,9 @@ def main(n_files, execution_mode):
             
             while remaining_count > 0:
 
-                process_files(n_files)
+                stop_processing = process_files(n_files, max_date_to_process)
+                if stop_processing:
+                    break
 
                 # Show remaining elements in the bucket
                 remaining_count = get_remaining_files_count(loader.bucket_name, loader.s3_client)
@@ -174,8 +184,8 @@ def main(n_files, execution_mode):
 #Program execution
 if __name__ == "__main__":
 
-    if len(sys.argv) != 3:
-        print("Usage: python executor.py <number_of_files_to_process> <execution_mode>")
+    if len(sys.argv) != 4:
+        print("Usage: python executor.py <number_of_files_to_process> <execution_mode> <max_date_to_process>")
         sys.exit(1)
 
     #Get number of files from the argument
@@ -191,5 +201,13 @@ if __name__ == "__main__":
         print("execution_mode should be 'continous' or 'batch'")
         sys.exit(1)
 
+    #Get max date to process
+    try:
+        max_date_to_process = sys.argv[3]
+        if max_date_to_process.lower() != "max":
+            max_date_to_process = pd.to_datetime(max_date_to_process, format='%Y-%m-%d %H:%M:%S')
+    except Exception:
+        print("<max_date_to_process must be in the format YYYY-mm-dd HH:MM:SS or 'max' to indicate processing the whole bucket")
+
     #Call the main function
-    main(n_files, execution_mode)
+    main(n_files, execution_mode, max_date_to_process)

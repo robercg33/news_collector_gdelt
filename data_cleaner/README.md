@@ -9,6 +9,7 @@ There are three componentes:
   - Execution command is: python executor.py <number_of_files_to_process> <execution_mode>
     - <number_of_files_to_process>: The 'batch size', indicates how many CSVs will be processed at each iteration. CSVs processed in the same batch will be stored in the same '.parquet' file.
     - <execution_mode>: `continuous` or `batch`.
+    - <max_date_to_process>: Indicates which is the maximum date of the bucket to clean the records. The format should be "YYYY-mm-dd HH:MM:SS". If set to 'max', then it will clean the whole bucket.
 
 ### continuous <execution_mode>
 
