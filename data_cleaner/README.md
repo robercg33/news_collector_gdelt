@@ -6,7 +6,7 @@ There are three componentes:
 - **cleaner.py**: The object that will be used for cleaning the body of the scraped news.
 - **loader.py**: In charge of taking the CSVs from the `collector_bucket` and remove the old CSVs once they have been transformed and saved into the `clean_bucket`.
 - **executor.py**: Script containing all the logic to execute the ETL process. It takes a batch of CSVs, clean them, add the date as a column and save into the `clean_bucket` as a single '.parquet' file.
-  - Execution command is: python executor.py <number_of_files_to_process> <execution_mode>
+  - Execution command is: python executor.py <number_of_files_to_process> <execution_mode> <max_date_to_process>
     - <number_of_files_to_process>: The 'batch size', indicates how many CSVs will be processed at each iteration. CSVs processed in the same batch will be stored in the same '.parquet' file.
     - <execution_mode>: `continuous` or `batch`.
     - <max_date_to_process>: Indicates which is the maximum date of the bucket to clean the records. The format should be "YYYY-mm-dd HH:MM:SS". If set to 'max', then it will clean the whole bucket.
