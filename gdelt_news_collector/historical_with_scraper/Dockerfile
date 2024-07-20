@@ -1,6 +1,9 @@
 # Use the official Python image from the Docker Hub
 FROM python:3.9-slim
 
+# Install required packages
+RUN apt-get update && apt-get install -y dnsutils curl iputils-ping net-tools
+
 # Set the working directory
 WORKDIR /app
 

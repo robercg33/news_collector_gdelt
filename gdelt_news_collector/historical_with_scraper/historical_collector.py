@@ -1,6 +1,5 @@
 import pandas as pd
 import os
-import sys
 from datetime import datetime, timedelta
 import boto3
 import json
@@ -8,11 +7,19 @@ from tqdm import tqdm
 from dotenv import load_dotenv
 import concurrent.futures
 import time
-from scraper import scrape_urls
-import subprocess
+import logging
 
 #Load the environment
 load_dotenv()
+
+#Configure the logger
+logging.basicConfig(
+    level=logging.INFO,  # Set the logging level
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',  # Define the log format
+    handlers=[logging.StreamHandler()]  # Ensure logs are sent to stdout
+)
+
+logger = logging.getLogger(__name__)
 
 #Get the credentials from the environment
 aws_access_key_id = os.getenv('AWS_ACCESS_KEY_ID')
@@ -21,6 +28,15 @@ aws_region = os.getenv('AWS_REGION')
 
 #The bucket to store the news
 s3_bucket_name = os.getenv('S3_COLLECTOR_BUCKET_NAME')
+#And the lambda function name
+lambda_function_name = os.getenv('LAMBDA_SCRAPER_FUNCTION_NAME')
+
+# Get script parameters from environment variables
+start_date = os.getenv('START_DATE')
+end_date = os.getenv('END_DATE')
+concurrent_threads = int(os.getenv('CONCURRENT_THREADS', 5))
+retry_skipped_dates_arg = os.getenv('RETRY_SKIPPED_DATES', 'no').lower()
+timeout = os.getenv("SCRAPER_TIMEOUT", 5)
 
 
 s3_client = boto3.client(
@@ -30,11 +46,12 @@ s3_client = boto3.client(
     region_name=aws_region
 )
 
-# Get script parameters from environment variables
-start_date = os.getenv('START_DATE')
-end_date = os.getenv('END_DATE')
-concurrent_threads = int(os.getenv('CONCURRENT_THREADS', 5))
-retry_skipped_dates_arg = os.getenv('RETRY_SKIPPED_DATES', 'no').lower()
+lambda_client = boto3.client(
+    'lambda',
+    aws_access_key_id=aws_access_key_id,
+    aws_secret_access_key=aws_secret_access_key,
+    region_name=aws_region
+)
 
 #Take count of the dates skipped, either by error or by max_retries in the lambda fucntion call
 skipped_dates = []
@@ -51,15 +68,36 @@ def scrape_and_save_s3(url_list, date_of_file):
     Returns:
     None
     """
-    #Call the scraper function
-    try:
-        response = scrape_urls(urls=url_list)
-    except Exception as e:
-        print(f"Error inside scrape_and_save_s3 function for date {date_of_file}: {e}")
+    #If we reach the maximum lambda request, wait and try after sleeping, with exponential backoff (max 5 times)
+    max_retries = 5
+    retries = 0
+    while retries < max_retries:
+        try:
+            #Call created lambda function with the list of urls "url_list"
+            response = lambda_client.invoke(
+                FunctionName=lambda_function_name,
+                InvocationType='RequestResponse',
+                Payload=json.dumps({"urls": url_list})
+            )
+            break
+        #If the exception is because we have reached the maximum concurrecy allowed by lambda, wait,  up to 5 retries
+        except lambda_client.exceptions.TooManyRequestsException:
+            print(f"Too many requests. Retrying in {2 ** retries} seconds...")
+            time.sleep(2 ** retries)
+            retries += 1
+        #Otherwise, consider a failed operation and avoid retrying
+        except Exception as e:
+            print(f"Error inside scrape_and_save_s3 function for date {date_of_file}: {e}")
+            #Add date to the skipped ones
+            skipped_dates.append(date_of_file)
+            return
+    #If we have reached the maximum retries, skip this file an exit the function
+    if retries == max_retries:
+        print(f"Failed to invoke Lambda function after {max_retries} retries. Skipping date {date_of_file}.")
         #Add date to the skipped ones
         skipped_dates.append(date_of_file)
         return
-
+    
     #Get the response payload
     response_payload = json.load(response['Payload'])
 
@@ -81,7 +119,6 @@ def scrape_and_save_s3(url_list, date_of_file):
 
     #Delete the local result file
     os.remove(result_filename)
-
 
 def fetch_and_scrape(url, formatted_datetime):
     """
@@ -108,11 +145,11 @@ def fetch_and_scrape(url, formatted_datetime):
         #Call the function to scrape the urls and save them to the S3 bucket
         scrape_and_save_s3(curr_url_list, formatted_datetime)
     except pd.errors.ParserError as e:
-        print(f"Error parsing CSV at {formatted_datetime}: {e}")
+        logger.error(f"Error parsing CSV at {formatted_datetime}: {e}")
         #Add date to the skipped ones
         skipped_dates.append(formatted_datetime)
     except Exception as e:
-        print(f"Error inside scrape_and_save_s3 function: {e}")
+        logger.error(f"Error inside scrape_and_save_s3 function: {e}")
         #Add date to the skipped ones
         skipped_dates.append(formatted_datetime) 
 
@@ -169,7 +206,7 @@ def news_to_scrape_to_s3(start_date_str, end_date_str, concurrent_threads=5):
             try:
                 future.result()
             except Exception as e:
-                print(f"Error processing URL: {e}")
+                logger.error(f"Error processing URL: {e}")
 
 def retry_skipped_dates():
     """
@@ -179,7 +216,7 @@ def retry_skipped_dates():
     None
     """
     if not skipped_dates:
-        print("No skipped dates to retry.")
+        logger.info("No skipped dates to retry.")
         return
 
     print(f"Retrying skipped dates...")
@@ -191,13 +228,12 @@ def retry_skipped_dates():
         try:
             fetch_and_scrape(url, date)
         except Exception as e:
-            print(f"Failed to process URL for {date}: {e}")
+            logger.error(f"Failed to process URL for {date}: {e}")
 
 if __name__ == "__main__":
 
-    #Exit if start and end dates have not been defined.
     if not start_date or not end_date:
-        print("Error: START_DATE and END_DATE environment variables must be set.")
+        logger.error("Error: START_DATE and END_DATE environment variables must be set.")
         exit(1)
 
     #Call executer function
@@ -205,22 +241,19 @@ if __name__ == "__main__":
         news_to_scrape_to_s3(start_date_str=start_date, end_date_str=end_date, concurrent_threads=concurrent_threads)
 
         #Print the final message and the dates that have been skipped
-        print(f"All news collected! Skipped dates: {skipped_dates}")
+        logger.info(f"All news collected! Skipped dates: {skipped_dates}")
 
         #If inidcated, try and collect those skipped dates
         if retry_skipped_dates_arg == "yes":
 
-            print(f"Sleeping before retrying...")
+            logger.info(f"Sleeping before retrying...")
             time.sleep(10)
 
             retry_skipped_dates()
 
-            print("Finished!")
-
+        #Display finish message
+        logger.info("Finished!")
 
     except Exception as e:
-        print(e)
+        logger.error(e)
         exit(0)
-
-    # Shut down the EC2 instance
-    subprocess.run(['sudo', 'shutdown', '-h', 'now'])
