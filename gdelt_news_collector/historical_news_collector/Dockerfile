@@ -14,3 +14,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY .env .
 
 # The command to run the script will be provided by AWS Batch, so no CMD or ENTRYPOINT needed here.
+CMD ["python", "historical_collector.py"]

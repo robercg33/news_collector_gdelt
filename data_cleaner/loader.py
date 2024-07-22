@@ -86,7 +86,7 @@ class Loader:
             for file_key in loaded_files:
                 csv_obj = self.s3_client.get_object(Bucket=self.bucket_name, Key=file_key)
                 body = csv_obj['Body'].read().decode('utf-8')
-                df = pd.read_csv(StringIO(body))
+                df = pd.read_csv(StringIO(body), lineterminator='\n')
                 
                 #Extract date from filename and add as a column
 
