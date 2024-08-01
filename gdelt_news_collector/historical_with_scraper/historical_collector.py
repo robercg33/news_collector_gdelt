@@ -109,7 +109,7 @@ def join_dfs_clean_and_save(accumulated_results, cleaner_saver):
     cleaner_saver.save_to_parquet(combined_df, s3_bucket_name, file_name=parquet_file_name)
 
     #Inform about the upload and the current date we have reached scraping
-    logger.info(f"File {pd.to_datetime(combined_df['date']).max().strftime('%Y-%-m %H:%M:%S')} uploaded to S3!\nCcheckpoint Date: {end_date}")
+    logger.info(f"File {pd.to_datetime(combined_df['date']).max().strftime('%Y-&m-%d %H:%M:%S')} uploaded to S3!\nCcheckpoint Date: {end_date}")
     
 
 def scrape_into_df(url_list, date_of_file):
