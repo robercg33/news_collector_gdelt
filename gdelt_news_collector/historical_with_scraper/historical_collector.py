@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 import concurrent.futures
 import time
 import logging
+from lambda_scraper import parallel_scraping
+from cleaner_saver import CleanerSaver
 
 #Load the environment
 load_dotenv()
@@ -28,36 +30,41 @@ aws_region = os.getenv('AWS_REGION')
 
 #The bucket to store the news
 s3_bucket_name = os.getenv('S3_COLLECTOR_BUCKET_NAME')
-#And the lambda function name
-lambda_function_name = os.getenv('LAMBDA_SCRAPER_FUNCTION_NAME')
 
 # Get script parameters from environment variables
 start_date = os.getenv('START_DATE')
 end_date = os.getenv('END_DATE')
 concurrent_threads = int(os.getenv('CONCURRENT_THREADS', 5))
 retry_skipped_dates_arg = os.getenv('RETRY_SKIPPED_DATES', 'no').lower()
-timeout = os.getenv("SCRAPER_TIMEOUT", 5)
-
-
-s3_client = boto3.client(
-    's3',
-    aws_access_key_id=aws_access_key_id,
-    aws_secret_access_key=aws_secret_access_key,
-    region_name=aws_region
-)
-
-lambda_client = boto3.client(
-    'lambda',
-    aws_access_key_id=aws_access_key_id,
-    aws_secret_access_key=aws_secret_access_key,
-    region_name=aws_region
-)
+timeout = int(os.getenv("SCRAPER_TIMEOUT", 5))
+scraper_max_workers = int(os.getenv('SCRAPER_MAX_WORKERS', 5))
 
 #Take count of the dates skipped, either by error or by max_retries in the lambda fucntion call
 skipped_dates = []
 url_col_idx = 60
 
-def scrape_and_save_s3(url_list, date_of_file):
+def join_dfs_clean_and_save(accumulated_results, cleaner_saver):
+    #Clean data
+    for df in accumulated_results:
+        df['body'] = df['body'].apply(cleaner_saver.clean_text)
+        df.dropna(subset=['body'], inplace=True)
+                    
+    #Create a df appending every DF in the accumulated results list
+    combined_df = pd.concat([d.transpose() for d in accumulated_results], axis=1, ignore_index=True).T
+
+    #Create filename for parquet file
+    start_date = pd.to_datetime(combined_df['date']).min().strftime('%Y%m%d%H%M%S')
+    end_date = pd.to_datetime(combined_df['date']).max().strftime('%Y%m%d%H%M%S')
+    parquet_file_name = f"news_{start_date}_to_{end_date}.parquet"
+
+    #Call the CS to save to parquet
+    cleaner_saver.save_to_parquet(combined_df, s3_bucket_name, file_name=parquet_file_name)
+
+    #Inform about the upload and the current date we have reached scraping
+    logger.info(f"File {parquet_file_name} uploaded to S3!\nCcheckpoint Date: {end_date}")
+    
+
+def scrape_into_df(url_list, date_of_file):
     """
     Scrapes the provided URLs and saves the results to the S3 bucket provided in the .env file.
 
@@ -68,57 +75,26 @@ def scrape_and_save_s3(url_list, date_of_file):
     Returns:
     None
     """
-    #If we reach the maximum lambda request, wait and try after sleeping, with exponential backoff (max 5 times)
-    max_retries = 5
-    retries = 0
-    while retries < max_retries:
-        try:
-            #Call created lambda function with the list of urls "url_list"
-            response = lambda_client.invoke(
-                FunctionName=lambda_function_name,
-                InvocationType='RequestResponse',
-                Payload=json.dumps({"urls": url_list})
-            )
-            break
-        #If the exception is because we have reached the maximum concurrecy allowed by lambda, wait,  up to 5 retries
-        except lambda_client.exceptions.TooManyRequestsException:
-            print(f"Too many requests. Retrying in {2 ** retries} seconds...")
-            time.sleep(2 ** retries)
-            retries += 1
-        #Otherwise, consider a failed operation and avoid retrying
-        except Exception as e:
-            print(f"Error inside scrape_and_save_s3 function for date {date_of_file}: {e}")
-            #Add date to the skipped ones
-            skipped_dates.append(date_of_file)
-            return
-    #If we have reached the maximum retries, skip this file an exit the function
-    if retries == max_retries:
-        print(f"Failed to invoke Lambda function after {max_retries} retries. Skipping date {date_of_file}.")
-        #Add date to the skipped ones
-        skipped_dates.append(date_of_file)
-        return
+    try:
+        # Scrape the URLs
+        results = parallel_scraping(url_list, max_workers=scraper_max_workers, timeout=timeout)
+            
+        # Process results
+        results_df = pd.DataFrame([{"url": k, "title": v[0], "body": v[1]} for d in results for k, v in d.items() if v is not None])
+        
+        #Add date as a column
+        results_df["date"] = date_of_file.strftime("%Y-%m-%d %H:%M:%S")
+
+        #Drop the rows with NaN values
+        df_for_s3 = results_df.dropna()
+
+        #Return the DF
+        return df_for_s3
     
-    #Get the response payload
-    response_payload = json.load(response['Payload'])
+    except Exception as e:
+        #If something goes wrong, return none
+        return None
 
-    #Convert the response payload from string to a list of dictionaries
-    response_list = json.loads(response_payload)
-    #Create the DF to store into S3
-    df_for_s3 = pd.DataFrame(response_list)
-
-    #Drop the rows with NaN values
-    df_for_s3 = df_for_s3.dropna()
-
-    #Save the response from the lambda function into a csv in S3
-    result_filename = f"news_{date_of_file.strftime('%Y_%m_%d__%H_%M_%S')}.csv"
-
-    df_for_s3.to_csv(result_filename, index=False, escapechar="\\")
-
-    #Our time to write to S3
-    s3_client.upload_file(result_filename, s3_bucket_name, result_filename)
-
-    #Delete the local result file
-    os.remove(result_filename)
 
 def fetch_and_scrape(url, formatted_datetime):
     """
@@ -143,15 +119,19 @@ def fetch_and_scrape(url, formatted_datetime):
         )[url_col_idx].unique().tolist()
         
         #Call the function to scrape the urls and save them to the S3 bucket
-        scrape_and_save_s3(curr_url_list, formatted_datetime)
+        return scrape_into_df(curr_url_list, formatted_datetime)
     except pd.errors.ParserError as e:
         logger.error(f"Error parsing CSV at {formatted_datetime}: {e}")
         #Add date to the skipped ones
         skipped_dates.append(formatted_datetime)
+        #And return a None value 
+        return None
     except Exception as e:
         logger.error(f"Error inside scrape_and_save_s3 function: {e}")
         #Add date to the skipped ones
-        skipped_dates.append(formatted_datetime) 
+        skipped_dates.append(formatted_datetime)
+        #And return a None value 
+        return None
 
 
 def news_to_scrape_to_s3(start_date_str, end_date_str, concurrent_threads=5):
@@ -192,6 +172,9 @@ def news_to_scrape_to_s3(start_date_str, end_date_str, concurrent_threads=5):
     
     urls_to_scrape = []
     
+    batch_size = start_date = int(os.getenv('BATCH_SIZE_SILVER', 20))  # Number of dfs per batch
+    accumulated_results = []
+    
     for _ in range(total_iterations): 
         # Generate the url for the current iteration
         formatted_datetime = current_date.strftime('%Y%m%d%H%M%S')
@@ -199,14 +182,41 @@ def news_to_scrape_to_s3(start_date_str, end_date_str, concurrent_threads=5):
         urls_to_scrape.append((url, current_date))
         current_date += timedelta(minutes=15)
     
+    #Initialize Cleaner
+    cleaner_saver = CleanerSaver(
+        aws_access_key_id=aws_access_key_id,
+        aws_secret_access_key=aws_secret_access_key,
+        aws_region=aws_region,
+        max_length=10000, 
+        min_length=500
+    )
+    
     #Use ThreadPoolExecutor to process URLs in parallel with progress bar
     with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent_threads) as executor:
         futures = [executor.submit(fetch_and_scrape, url, date) for url, date in urls_to_scrape]
         for future in tqdm(concurrent.futures.as_completed(futures), total=total_iterations, desc="Processing URLs"):
+
             try:
-                future.result()
+                result = future.result()
+                if result is not None and not result.empty:
+                    accumulated_results.append(result)
+                    
+                # Check if we have accumulated enough results for a batch
+                if len(accumulated_results) >= batch_size:
+                    
+                    #Join the data, clean it and save to S3 in parquet format
+                    join_dfs_clean_and_save(accumulated_results=accumulated_results, cleaner_saver=cleaner_saver)
+
+                    accumulated_results = []  # Reset the accumulated results
+
             except Exception as e:
-                logger.error(f"Error processing URL: {e}")
+                logger.error(f"Error in fetch_and_scrape function: {e}")
+
+    # Handle any remaining accumulated results
+    if accumulated_results:
+        
+        #Join the data, clean it and save to S3 in parquet format
+        join_dfs_clean_and_save(accumulated_results=accumulated_results, cleaner_saver=cleaner_saver)
 
 def retry_skipped_dates():
     """
