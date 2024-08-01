@@ -1,8 +1,7 @@
 import pandas as pd
 import os
 from datetime import datetime, timedelta
-import boto3
-import json
+from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 from dotenv import load_dotenv
 import concurrent.futures
@@ -43,14 +42,63 @@ scraper_max_workers = int(os.getenv('SCRAPER_MAX_WORKERS', 5))
 skipped_dates = []
 url_col_idx = 60
 
+def parallel_apply(df, func, max_workers=4):
+    """
+    Applies a function to all rows of the 'body' column in the DataFrame in parallel.
+
+    Parameters:
+    - df: pandas DataFrame, The DataFrame to apply the function to.
+    - func: callable, The function to apply to each element of the 'body' column.
+    - max_workers: int, The maximum number of threads to use.
+
+    Returns:
+    - df: pandas DataFrame, The DataFrame with the applied function.
+    """
+    # The resulting column after applying the function
+    result_series = pd.Series(index=df.index, dtype=object)
+
+    def apply_function(row_index, row_value):
+        try:
+            return func(row_value)
+        except Exception as e:
+            logger.error(f"Error applying function to row {row_index}: {e}")
+            return None
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Map each row index and value to the executor
+        futures = {
+            executor.submit(apply_function, idx, val): idx
+            for idx, val in df['body'].items()
+        }
+
+        for future in concurrent.futures.as_completed(futures):
+            row_index = futures[future]
+            try:
+                result = future.result()
+                result_series.at[row_index] = result
+            except Exception as e:
+                logger.error(f"Error in future for row {row_index}: {e}")
+                result_series.at[row_index] = None
+
+    df['body'] = result_series
+    df.dropna(subset=['body'], inplace=True)
+    return df
+
 def join_dfs_clean_and_save(accumulated_results, cleaner_saver):
     #Clean data
+    '''
     for df in accumulated_results:
         df['body'] = df['body'].apply(cleaner_saver.clean_text)
         df.dropna(subset=['body'], inplace=True)
+    '''
+    max_workers = 8  # You can adjust this based on your CPU cores
+    cleaned_dataframes = []
+    for df_to_clean in accumulated_results:
+        cleaned_df = parallel_apply(df_to_clean, cleaner_saver.clean_text, max_workers=max_workers)
+        cleaned_dataframes.append(cleaned_df)
                     
     #Create a df appending every DF in the accumulated results list
-    combined_df = pd.concat([d.transpose() for d in accumulated_results], axis=1, ignore_index=True).T
+    combined_df = pd.concat([d.transpose() for d in cleaned_dataframes], axis=1, ignore_index=True).T
 
     #Create filename for parquet file
     start_date = pd.to_datetime(combined_df['date']).min().strftime('%Y%m%d%H%M%S')
@@ -61,7 +109,7 @@ def join_dfs_clean_and_save(accumulated_results, cleaner_saver):
     cleaner_saver.save_to_parquet(combined_df, s3_bucket_name, file_name=parquet_file_name)
 
     #Inform about the upload and the current date we have reached scraping
-    logger.info(f"File {parquet_file_name} uploaded to S3!\nCcheckpoint Date: {end_date}")
+    logger.info(f"File {pd.to_datetime(combined_df['date']).max().strftime('%Y-%-m %H:%M:%S')} uploaded to S3!\nCcheckpoint Date: {end_date}")
     
 
 def scrape_into_df(url_list, date_of_file):
@@ -191,26 +239,27 @@ def news_to_scrape_to_s3(start_date_str, end_date_str, concurrent_threads=5):
         min_length=500
     )
     
-    #Use ThreadPoolExecutor to process URLs in parallel with progress bar
-    with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent_threads) as executor:
-        futures = [executor.submit(fetch_and_scrape, url, date) for url, date in urls_to_scrape]
-        for future in tqdm(concurrent.futures.as_completed(futures), total=total_iterations, desc="Processing URLs"):
-
-            try:
-                result = future.result()
-                if result is not None and not result.empty:
-                    accumulated_results.append(result)
-                    
-                # Check if we have accumulated enough results for a batch
-                if len(accumulated_results) >= batch_size:
-                    
-                    #Join the data, clean it and save to S3 in parquet format
-                    join_dfs_clean_and_save(accumulated_results=accumulated_results, cleaner_saver=cleaner_saver)
-
-                    accumulated_results = []  # Reset the accumulated results
-
-            except Exception as e:
-                logger.error(f"Error in fetch_and_scrape function: {e}")
+    # Process URLs in batches
+    for i in range(0, len(urls_to_scrape), batch_size):
+        batch_urls = urls_to_scrape[i:i + batch_size]
+        
+        # Use ThreadPoolExecutor to process URLs in parallel
+        with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent_threads) as executor:
+            futures = [executor.submit(fetch_and_scrape, url, date) for url, date in batch_urls]
+            
+            # Process the futures as they complete
+            for future in tqdm(concurrent.futures.as_completed(futures), total=len(batch_urls), desc="Processing URLs"):
+                try:
+                    result = future.result()
+                    if result is not None and not result.empty:
+                        accumulated_results.append(result)
+                except Exception as e:
+                    logger.error(f"Error in fetch_and_scrape function: {e}")
+        
+        # Join the data, clean it, and save to S3 in parquet format after each batch
+        if accumulated_results:
+            join_dfs_clean_and_save(accumulated_results=accumulated_results, cleaner_saver=cleaner_saver)
+            accumulated_results = []  # Reset the accumulated results
 
     # Handle any remaining accumulated results
     if accumulated_results:
