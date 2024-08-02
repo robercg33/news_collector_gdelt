@@ -99,7 +99,7 @@ def join_dfs_clean_and_save(accumulated_results, cleaner_saver):
         df_to_clean["len_body"] = df_to_clean["body"].apply(len)
         df_to_clean = df_to_clean[(df_to_clean["len_body"] > 500) & (df_to_clean["len_body"] < 15000)]
         df_to_clean = df_to_clean.copy()
-        df_to_clean.drop(columns=["len_body"], inplace=True)
+        df_to_clean = df_to_clean.drop(columns=["len_body"])
 
         #Now, proceed to clean the df
         cleaned_df = parallel_apply(df_to_clean, cleaner_saver.clean_text, max_workers=max_workers)
@@ -109,10 +109,9 @@ def join_dfs_clean_and_save(accumulated_results, cleaner_saver):
     combined_df = pd.concat([d.transpose() for d in cleaned_dataframes], axis=1, ignore_index=True).T
 
     #Drop duplicates
-    combined_df = combined_df.copy()
-    combined_df.drop_duplicates(subset="body", inplace=True)
+    combined_df = combined_df.drop_duplicates(subset="body")
     #combined_df.drop_duplicates(subset="title", inplace=True)
-    combined_df.drop_duplicates(subset="url", inplace=True)
+    combined_df = combined_df.drop_duplicates(subset="url")
 
     #Create filename for parquet file
     start_date = pd.to_datetime(combined_df['date']).min().strftime('%Y%m%d%H%M%S')
