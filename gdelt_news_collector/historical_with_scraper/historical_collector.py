@@ -109,7 +109,7 @@ def join_dfs_clean_and_save(accumulated_results, cleaner_saver):
 
     #Drop duplicates
     combined_df.drop_duplicates(subset="body", inplace=True)
-    combined_df.drop_duplicates(subset="title", inplace=True)
+    #combined_df.drop_duplicates(subset="title", inplace=True)
     combined_df.drop_duplicates(subset="url", inplace=True)
 
     #Create filename for parquet file
