@@ -129,10 +129,14 @@ def parallel_scraping(urls, max_workers=5, timeout=5):
 
             try:
                 #Retrieve the result of the future (scraped data)
-                data = future.result()
+                data = future.result(timeout=10) # Timeout in casr some pages takes a lot to fetch or process by BeautifulSoup to avoid bottleneck
 
                 #Add to the results lists
                 results.append(data)
+
+            except TimeoutError:
+                #Do not log, just print and go to the next iteration
+                print(f"Scraping took longer than {10} seconds and was terminated.")
             except Exception as e:
 
                 #If an exception occurs, print the exception details

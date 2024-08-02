@@ -91,9 +91,15 @@ def join_dfs_clean_and_save(accumulated_results, cleaner_saver):
         df['body'] = df['body'].apply(cleaner_saver.clean_text)
         df.dropna(subset=['body'], inplace=True)
     '''
-    max_workers = 8  # You can adjust this based on your CPU cores
+    max_workers = 20  # You can adjust this based on your CPU cores
     cleaned_dataframes = []
     for df_to_clean in accumulated_results:
+        #First filter very ver large text and very small text. This is done to avoid processing text very long or short that we will
+        # then later discard anyways
+        df_to_clean["len_body"] = df_to_clean["body"].apply(len)
+        df_to_clean = df_to_clean[(df_to_clean["len_body"] > 500) & (df_to_clean["len_body"] < 15000)]
+
+        #Now, proceed to clean the df
         cleaned_df = parallel_apply(df_to_clean, cleaner_saver.clean_text, max_workers=max_workers)
         cleaned_dataframes.append(cleaned_df)
                     
@@ -109,7 +115,7 @@ def join_dfs_clean_and_save(accumulated_results, cleaner_saver):
     cleaner_saver.save_to_parquet(combined_df, s3_bucket_name, file_name=parquet_file_name)
 
     #Inform about the upload and the current date we have reached scraping
-    logger.info(f"File {pd.to_datetime(combined_df['date']).max().strftime('%Y-&m-%d %H:%M:%S')} uploaded to S3!\nCcheckpoint Date: {end_date}")
+    logger.info(f"File {pd.to_datetime(combined_df['date']).max().strftime('%Y-%m-%d %H:%M:%S')} uploaded to S3!\nCcheckpoint Date: {end_date}")
     
 
 def scrape_into_df(url_list, date_of_file):
@@ -248,7 +254,7 @@ def news_to_scrape_to_s3(start_date_str, end_date_str, concurrent_threads=5):
             futures = [executor.submit(fetch_and_scrape, url, date) for url, date in batch_urls]
             
             # Process the futures as they complete
-            for future in tqdm(concurrent.futures.as_completed(futures), total=len(batch_urls), desc="Processing URLs"):
+            for future in tqdm(concurrent.futures.as_completed(futures), total=len(batch_urls), desc="Processing URLs batchs"):
                 try:
                     result = future.result()
                     if result is not None and not result.empty:
