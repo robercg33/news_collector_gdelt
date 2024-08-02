@@ -37,7 +37,6 @@ concurrent_threads = int(os.getenv('CONCURRENT_THREADS', 5))
 retry_skipped_dates_arg = os.getenv('RETRY_SKIPPED_DATES', 'no').lower()
 timeout = int(os.getenv("SCRAPER_TIMEOUT", 5))
 scraper_max_workers = int(os.getenv('SCRAPER_MAX_WORKERS', 5))
-scraper_max_duration = int(os.getenv("SCRAPER_MAX_DURATION", 5))
 
 #Take count of the dates skipped, either by error or by max_retries in the lambda fucntion call
 skipped_dates = []
@@ -142,7 +141,7 @@ def scrape_into_df(url_list, date_of_file):
     """
     try:
         # Scrape the URLs
-        results = parallel_scraping(url_list, max_workers=scraper_max_workers, timeout=timeout, max_duration=scraper_max_duration)
+        results = parallel_scraping(url_list, max_workers=scraper_max_workers, timeout=timeout)
             
         # Process results
         results_df = pd.DataFrame([{"url": k, "title": v[0], "body": v[1]} for d in results for k, v in d.items() if v is not None])

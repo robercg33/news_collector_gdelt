@@ -8,7 +8,7 @@ from tqdm import tqdm
 import logging
 import warnings
 from urllib3.exceptions import InsecureRequestWarning
-import time
+
 # Suppress SSL warnings
 warnings.simplefilter('ignore', InsecureRequestWarning)
 
@@ -93,7 +93,7 @@ def scrape_page(url, session, timeout=5):
 
 
 # Function to handle parallel scraping
-def parallel_scraping(urls, max_workers=5, timeout=5, max_duration =5):
+def parallel_scraping(urls, max_workers=5, timeout=5):
     """
     Handles the parallel scraping of multiple web pages using a thread pool.
 
@@ -119,11 +119,6 @@ def parallel_scraping(urls, max_workers=5, timeout=5, max_duration =5):
     #Create the list to store the results and a session
     results = []
     session = create_session()
-
-    #Get the start execution time
-    start_time = time.time()
-    #And the max duration in seconds
-    max_duration_seconds = max_duration  * 60
     
     #Create a ThreadPoolExecutor to manage the pool of worker threads
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -133,13 +128,6 @@ def parallel_scraping(urls, max_workers=5, timeout=5, max_duration =5):
 
         #Process the futures as they complete, showing progress with tqdm
         for future in tqdm(as_completed(future_to_url), total=len(urls), desc="Scraping progress"):
-            
-            #Get elapsed time since the start
-            elapsed_time = time.time() - start_time
-
-            if elapsed_time > max_duration_seconds:
-                logging.info(f"Time limit of {max_duration} minutes reached. Stopping.")
-                break
 
             try:
                 #Retrieve the result of the future (scraped data)
