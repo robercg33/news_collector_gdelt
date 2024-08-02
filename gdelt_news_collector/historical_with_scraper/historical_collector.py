@@ -98,6 +98,7 @@ def join_dfs_clean_and_save(accumulated_results, cleaner_saver):
         # then later discard anyways
         df_to_clean["len_body"] = df_to_clean["body"].apply(len)
         df_to_clean = df_to_clean[(df_to_clean["len_body"] > 500) & (df_to_clean["len_body"] < 15000)]
+        df_to_clean = df_to_clean.copy()
         df_to_clean.drop(columns=["len_body"], inplace=True)
 
         #Now, proceed to clean the df
@@ -108,6 +109,7 @@ def join_dfs_clean_and_save(accumulated_results, cleaner_saver):
     combined_df = pd.concat([d.transpose() for d in cleaned_dataframes], axis=1, ignore_index=True).T
 
     #Drop duplicates
+    combined_df = combined_df.copy()
     combined_df.drop_duplicates(subset="body", inplace=True)
     #combined_df.drop_duplicates(subset="title", inplace=True)
     combined_df.drop_duplicates(subset="url", inplace=True)
@@ -120,8 +122,10 @@ def join_dfs_clean_and_save(accumulated_results, cleaner_saver):
     #Call the CS to save to parquet
     cleaner_saver.save_to_parquet(combined_df, s3_bucket_name, file_name=parquet_file_name)
 
+    ckpt_date = pd.to_datetime(combined_df['date']).max().strftime('%Y-%m-%d %H:%M:%S')
+
     #Inform about the upload and the current date we have reached scraping
-    logger.info(f"File {pd.to_datetime(combined_df['date']).max().strftime('%Y-%m-%d %H:%M:%S')} uploaded to S3!\nCcheckpoint Date: {end_date}")
+    logger.info(f"File {parquet_file_name} uploaded to S3!\nCcheckpoint Date: {ckpt_date}")
     
 
 def scrape_into_df(url_list, date_of_file):
