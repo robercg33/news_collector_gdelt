@@ -145,12 +145,6 @@ class CleanerSaver:
             If an error occurs while saving the DataFrame to S3.
         """
         try:
-            s3_client = boto3.client(
-                's3',
-                aws_access_key_id=self.aws_access_key_id,
-                aws_secret_access_key=self.aws_secret_access_key,
-                region_name=self.aws_region
-            )
             parquet_buffer = BytesIO()
             combined_df.to_parquet(parquet_buffer, index=False)
             self.s3_client.put_object(Bucket=bucket_name, Key=file_name, Body=parquet_buffer.getvalue())
